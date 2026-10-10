@@ -14,7 +14,7 @@ export async function destination(agent, options={}) {
   if(configured) return path.resolve(configured,'1688-product-sourcing');
   if(agent==='codex') return path.join(env.CODEX_HOME||path.join(home,'.codex'),'skills','1688-product-sourcing');
   // Preserve existing legacy installations; new SealSeek installs use its own home.
-  if(agent==='sealseek' && await exists(path.join(home,'.agents/skills/1688-product-sourcing'))) return path.join(home,'.agents/skills/1688-product-sourcing');
+  if(agent==='sealseek' && (await exists(path.join(home,'.agents/skills/1688-product-sourcing')) || await exists(path.join(home,'.agents/skills/1688cli')))) return path.join(home,'.agents/skills/1688-product-sourcing');
   return path.join(home,`.${agent}`,'skills','1688-product-sourcing');
 }
 export async function hashes(dir) {
