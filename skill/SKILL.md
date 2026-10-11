@@ -1,13 +1,13 @@
 ---
 name: 1688-product-sourcing
-description: Use 1688-product-sourcing for high-coverage, read-only 1688 sourcing by keyword or image. Preserve every discovered offer, analyze product images in batches of ten, cluster visible product styles, compare prices and suppliers, and deliver categorized HTML plus traceable JSON.
+description: Use 1688-product-sourcing for high-coverage, read-only 1688 sourcing by keyword or image. Preserve every discovered offer, compare product images in batches of up to ten against evolving whole-product style prototypes, compare prices and suppliers, and deliver categorized HTML plus traceable JSON.
 ---
 
 # 1688 找货
 
 ## 目标与边界
 
-把用户的商品需求转化为高覆盖、可追溯的 1688 搜索、唯一商品库、价格与商家初筛以及人工询价交接。商品查询只通过 `@petercjl/1688cli` 的稳定 CLI；Agent 负责观察结果、选择下一轮词或图、判断相关性。平台标价、销量、材质、工厂标签等是待核实的平台信息。询盘、消息、订单和付款由人执行。
+把用户的商品需求转化为高覆盖、可追溯的 1688 搜索、唯一商品库、完整实物款式原型、价格与商家初筛以及人工询价交接。商品查询只通过 `@petercjl/1688cli` 的稳定 CLI；Agent 负责观察结果、选择下一轮词或图、判断相关性。平台标价、销量、材质、工厂标签等是待核实的平台信息。询盘、消息、订单和付款由人执行。
 
 本 Skill 是包内唯一规范副本。Codex、SealSeek 与 WorkBuddy 的安装目录是受管理目标，业务方法只在此处维护。
 
@@ -35,11 +35,11 @@ description: Use 1688-product-sourcing for high-coverage, read-only 1688 sourcin
 3. **检查执行能力。** 运行 `1688-product-sourcing doctor --json` 与 `1688-product-sourcing capabilities --json`，按 [capabilities.json](capabilities.json) 和当前平台的 `adapters/<platform>.json` 核对所需能力。`doctor` 只检查本地 AK 是否配置，不能证明服务端仍接受。能力缺失时保留真实错误，停止相关分支。
 4. **扩展查询。** 每个词、图或链接写明搜索假设与来源，逐轮保存原始 JSON。无图模式从大类词开始；搜索词只负责召回，不负责定义款式类别。有图模式逐图首搜，再由相符商品反推平台叫法。记录每轮返回、新增唯一商品和新增相关商品。搜索预算按任务规模设置；不能只因找到几个代表款而停止。底层仍只通过 `1688-product-sourcing tool products search/image/link`。
 5. **归并完整商品库。** 将成功查询登记到新清单 JSON，运行 `1688-product-sourcing research collect <search-manifest.json> --output <新-inventory.json>`。它按 `offer_id` 生成唯一商品库，保留全部来源及 SKU/价格观察。遇到授权、限流或服务错误时保留部分结果；单次零结果不等于平台无货。
-6. **逐图视觉打标。** 探索模式运行 `1688-product-sourcing research visual-batches <inventory.json> --output <新-visual-batches.json>`，得到只含 `offer_id` 与 `image_url` 的批次；标题、SKU、搜索词、价格和商家不得进入本节点输入。若当前视觉能力需要本地文件，运行 `1688-product-sourcing research visual-materialize <visual-batches.json> --output-dir <新目录>`，只下载本任务的商品主图并保留 ID 映射。按批次调用当前 Agent 广告的 `sourcing.image.inspect`：每批最多 10 张、同一轮并发读取，逐张返回主体、可见结构标签、可见依据、置信度和 `classified` / `needs_review` / `unusable`。不得从图像猜材质、涂层、钢号、功能或质量。最后不足 10 张可按实际数量执行；能力不能并发检查并逐图对应时返回 `CAPABILITY_UNAVAILABLE`，不得退回标题分类。
-7. **视觉相似性聚类。** 全部可用图片完成逐图打标后，运行 `1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <视觉标签目录> --output <新-visual-catalog.json>`，先校验每个 `offer_id` 恰有一条标签，再根据主体形态、轮廓、结构、部件关系、开孔/分格、深浅及其他可见标签聚类。每个已分类商品只有一个主要结构簇；多维可见特征留在 `visual_tags[]`，材质和营销属性不充当款式类别。类别名称先描述可见形态，之后才可读取标题帮助使用平台常用叫法，并记录标题与图片冲突。图片不可判或跨多款拼图进入待核验区，不强行归类。
-8. **相关性、搜索扩展与价格商家初筛。** 相关性优先依据图片主体；标题、SKU 和搜索词只在视觉判断之后用于语义复核、发现冲突和提出下一轮检索词。在相关或可能相关商品内按主要视觉类别、可见标签、规格、采购量、标价、起订量和商家筛选。相同商品 ID 在总库只占一行；不同商家的相似款保留为不同链接。按实际 SKU 与起批档位比价，不一致或未知时标待核验。商家身份优先依据返回的会员 ID，名称相似不足以合并。
-9. **整理证据。** 按 [输出契约](references/topics/output-contract.md) 编写 `analysis.json`，包含视觉批次、逐图标签、聚类、相关性、人工交接与停止理由，`schema_version` 使用 `2.1.0`。运行 `1688-product-sourcing research build <inventory.json> --context <analysis.json> --output <新-sourcing-result.json>` 确定性地保留完整商品库，再运行 `1688-product-sourcing research validate`。`complete` 表示本轮已完成既定范围、逐图打标和聚类，不表示全平台已搜全。
-10. **生成 HTML 交付。** 读取 [HTML 报告映射](references/topics/html-report.md)。通过当前宿主 Skill 目录或已广告的 Skill 目录按**精确名称**解析 `compact-commerce-ui`，完整加载它的当前 `SKILL.md`，执行其主线，再返回本主线。依次运行 `1688-product-sourcing research viewmodel <sourcing-result.json> --output <新-viewmodel.json>`、`commerce-ui render --input <viewmodel.json> --output <新-report.html>`、`commerce-ui validate <report.html>`。分类页按主要视觉款式展示，可见标签用于说明和筛选；待核验图片单列。商品卡展示 HTTPS 网络主图、视觉依据、SKU/标价/起订量/商家及来源。交付 HTML、完整 JSON、查询清单、视觉批次清单和覆盖摘要。
+6. **提出原型并持续比较。** 探索模式在此节点读取 [款式原型方法](references/topics/style-prototypes.md)，回答“样本中有哪些值得独立选款的完整实物方案”。运行 `research visual-batches` 生成商品 ID 与主图对应的批次；每批最多 10 张是执行上限，按宿主实际能力逐图或并发观察，保证 ID 对应。需要本地文件时用 `research visual-materialize`。先看差异较大的样本，提出含实物定义、代表图、纳入与排除边界、选款意义和证据状态的候选原型；随后每张图与原型代表图和易混淆边界样本持续比较。视觉输入隔离标题、价格、SKU 与商家；标签用于记录证据。颜色、尺寸或普通配件变化记为款内变体；关键结构或整体方案不同才考虑新款。多款同图可关联多个款式；主体不清、配件为主或证据不足留边界组。精确模式继续执行参考图对照，按可见差异判断匹配等级，不强制创建全类目款式目录。
+7. **原型修订、回查与图片组审阅。** 新增、合并、拆分或调整原型边界时记录理由与受影响的旧商品，回查相近样本后更新目录版本。每轮补搜只补充新增或图片变化的观察；复用记录须核对图片指纹，并按当前原型版本复核归属。原型变化使原审阅失效。读取 [当前输出契约](references/topics/output-contract.md)，写原型目录与逐商品归属；运行 `research visual-compile <批次清单> --tag-dir <归属目录> --prototypes <原型目录.json> --output <新目录结果.json>`。程序只校验覆盖、边界和归属一致性，不替 Agent 决定类别。生成 `partial` 审阅稿，按款式展示代表图与全部成员、边界组和原图链接，请用户审阅；记录真实审阅结果。未通过时返回本步骤修订；用户明确授权 Agent 自审时须标明实际审阅者。类别组可重叠，商品总数仍按 ID 去重。
+8. **相关性、搜索扩展与价格商家初筛。** 图片组通过审阅后再形成选款价值判断；为继续召回可先做事实性文字复核。相关性优先依据图片主体；标题、SKU 和搜索词只在视觉判断之后用于语义复核、发现冲突和提出下一轮检索词。在相关或可能相关商品内按款式原型、可见标签、规格、采购量、标价、起订量和商家筛选。相同商品 ID 在总库只占一行；不同商家的相似款保留为不同链接。按实际 SKU 与起批档位比价，不一致或未知时标待核验。商家身份优先依据返回的会员 ID，名称相似不足以合并。
+9. **整理证据。** 按 [输出契约](references/topics/output-contract.md) 编写 `analysis.json`，包含原型目录、逐商品归属、修订与回查记录、图片组审阅、相关性、人工交接与停止理由，`schema_version` 使用 `2.2.0`。运行 `1688-product-sourcing research build <inventory.json> --context <analysis.json> --output <新-sourcing-result.json>` 确定性地保留完整商品库，再运行 `1688-product-sourcing research validate`。`complete` 表示本轮已完成既定范围、逐商品比较、回查和图组审阅，不表示全平台已搜全。
+10. **生成 HTML 交付。** 读取 [HTML 报告映射](references/topics/html-report.md)。通过当前宿主 Skill 目录或已广告的 Skill 目录按**精确名称**解析 `compact-commerce-ui`，完整加载它的当前 `SKILL.md`，执行其主线，再返回本主线。依次运行 `1688-product-sourcing research viewmodel <sourcing-result.json> --output <新-viewmodel.json>`、`commerce-ui render --input <viewmodel.json> --output <新-report.html>`、`commerce-ui validate <report.html>`。分类页按完整实物款式原型展示，可见标签用于说明和筛选；待核验图片单列。商品卡展示 HTTPS 网络主图、视觉依据、SKU/标价/起订量/商家及来源。交付 HTML、完整 JSON、查询清单、视觉批次清单、原型目录、归属表和覆盖摘要。
 
 ## CLI 契约与结果边界
 
@@ -50,7 +50,7 @@ description: Use 1688-product-sourcing for high-coverage, read-only 1688 sourcin
 1688-product-sourcing research collect <search-manifest.json> --output <新-inventory.json>
 1688-product-sourcing research visual-batches <inventory.json> --output <新-visual-batches.json>
 1688-product-sourcing research visual-materialize <visual-batches.json> --output-dir <新目录>
-1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <视觉标签目录> --output <新-visual-catalog.json>
+1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <视觉标签目录> --prototypes <原型目录.json> --output <新-visual-catalog.json>
 1688-product-sourcing research build <inventory.json> --context <analysis.json> --output <新-sourcing-result.json>
 1688-product-sourcing tool suppliers search "平底锅工厂" --output <新路径>.json
 1688-product-sourcing research viewmodel <sourcing-result.json> --output <新路径>.json

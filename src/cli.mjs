@@ -24,7 +24,7 @@ const usage = `1688-product-sourcing — 1688 只读找货与供应商筛选
   1688-product-sourcing research build <inventory.json> --context <analysis.json> --output <new-sourcing-result.json>
   1688-product-sourcing research visual-batches <inventory-or-result.json> --output <new-visual-batches.json>
   1688-product-sourcing research visual-materialize <visual-batches.json> --output-dir <new-directory>
-  1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <标签目录> --output <new-catalog.json>
+  1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <标签目录> --prototypes <款式原型.json> --output <new-catalog.json>
   1688-product-sourcing research viewmodel <sourcing-result.json> --output <new-viewmodel.json>
   1688-product-sourcing capabilities [--json]
   1688-product-sourcing doctor --json
@@ -33,7 +33,7 @@ const usage = `1688-product-sourcing — 1688 只读找货与供应商筛选
 
 查询结果默认输出 JSON 到 stdout。--output <新文件> 可保存 JSON；已有文件拒绝覆盖。`;
 
-const optionNames = new Set(['limit', 'sort', 'score-level', 'purchase-amount', 'tags', 'ic-tags', 'image', 'output', 'output-dir', 'tag-dir', 'context', 'max-price', 'max-moq', 'min-sold', 'location', 'relevance', 'category', 'supplier', 'agent', 'path', 'mode']);
+const optionNames = new Set(['limit', 'sort', 'score-level', 'purchase-amount', 'tags', 'ic-tags', 'image', 'output', 'output-dir', 'tag-dir', 'prototypes', 'context', 'max-price', 'max-moq', 'min-sold', 'location', 'relevance', 'category', 'supplier', 'agent', 'path', 'mode']);
 const flags = new Set(['json', 'proofing', 'check', 'apply', 'help', 'version', 'force']);
 
 export function parseArgs(argv) {
@@ -83,7 +83,7 @@ async function runCommand(positionals, options) {
     if (action === 'build') return buildResearch(path, resolve(required(options.context, '判断 JSON 文件')));
     if (action === 'visual-batches') return buildVisualBatches(path);
     if (action === 'visual-materialize') return materializeVisualBatches(path, resolve(required(options['output-dir'], '新输出目录')));
-    if (action === 'visual-compile') return compileVisualTags(path, resolve(required(options['tag-dir'], '视觉标签目录')));
+    if (action === 'visual-compile') return compileVisualTags(path, resolve(required(options['tag-dir'], '视觉标签目录')), options.prototypes);
     let data;
     try { data = JSON.parse(await readFile(path, 'utf8')); }
     catch { throw new CliError('INPUT_READ_FAILED', '无法读取找货结果 JSON 文件', { path }); }

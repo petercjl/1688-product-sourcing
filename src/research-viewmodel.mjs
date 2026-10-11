@@ -22,9 +22,10 @@ function productCard(product, extra = {}) {
       ...(visual ? [{ label: '视觉标签', value: visual.visual_tags.length ? visual.visual_tags.join('、') : '待核验' },
         { label: '视觉置信度', value: visual.confidence },
         ...(product.title_conflict && product.title_conflict !== 'not_checked' ? [{ label: '图文冲突', value: product.title_conflict }] : [])] : []),
+      ...(product.style_assignment ? [{ label: '可见实物', value: product.style_assignment.visible_objects.join('；') || '待核验' }, { label: '款内变体', value: product.style_assignment.variants.join('；') || '无已确认变体' }, { label: '边界状态', value: product.style_assignment.boundary_status }] : []),
       { label: '搜索来源', value: product.source_search_ids.join('、') }
     ],
-    evidence: [visual?.visual_evidence?.length ? `图片依据：${visual.visual_evidence.join('；')}` : '', product.assessment, extra.evidence].filter(Boolean).join(' '),
+    evidence: [product.style_assignment?.association_reason, visual?.visual_evidence?.length ? `图片依据：${visual.visual_evidence.join('；')}` : '', product.assessment, extra.evidence].filter(Boolean).join(' '),
     url: product.url,
     action_label: '打开 1688 商品',
     copy_value: product.url,
@@ -43,7 +44,7 @@ function validateWebCards(data) {
 
 function overview(data, groupSummaries) {
   const kind = data.mode === 'explore' ? '款式分类' : '逐图找款';
-  const fullInventory = ['2.0.0', '2.1.0'].includes(data.schema_version);
+  const fullInventory = ['2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version);
   const relevant = fullInventory ? data.products.filter(row => row.relevance === 'relevant').length : null;
   const possible = fullInventory ? data.products.filter(row => row.relevance === 'possible').length : null;
   return {
@@ -59,6 +60,7 @@ function overview(data, groupSummaries) {
         { label: '清单商品', value: String(data.products.length) },
         { label: kind, value: String(groupSummaries.length) }
       ] },
+      ...(data.schema_version === '2.2.0' && data.mode === 'explore' ? [{ type: 'alert', title: '图片组审阅', tone: data.mode_data.prototype_catalog.review.status === 'approved' ? 'info' : 'warning', text: `状态：${data.mode_data.prototype_catalog.review.status}；${data.mode_data.prototype_catalog.review.notes || '等待图组审阅'}。各组归属数可能重叠，独立商品总数按 ID 去重。` }] : []),
       { type: 'list', title: kind, items: groupSummaries.map(row => `${row.label} · ${row.count} 个商品`) },
       ...(fullInventory ? [{ type: 'list', title: '覆盖限制', items: data.coverage.limitations.length ? data.coverage.limitations : ['本轮搜索范围以查询日志为准。'] }] : []),
       { type: 'alert', title: '停止原因', text: data.stop_reason, tone: data.status === 'complete' ? 'info' : 'warning' }
@@ -92,23 +94,23 @@ function comparison(data) {
 }
 
 function exploreViews(data, productsById) {
-  if (['2.0.0', '2.1.0'].includes(data.schema_version)) {
+  if (['2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version)) {
     const views = [];
     const summaries = [];
     for (const [index, cluster] of data.mode_data.clusters.entries()) {
-      const members = data.products.filter(product => product.category_ids.includes(cluster.cluster_id) && product.relevance !== 'irrelevant');
+      const members = data.products.filter(product => product.category_ids.includes(cluster.cluster_id) && (data.schema_version === '2.2.0' || product.relevance !== 'irrelevant'));
       summaries.push({ label: cluster.name, count: members.length });
       views.push({ id: `category_${index + 1}`, label: cluster.name, title: cluster.name,
         subtitle: (cluster.visual_signature || cluster.distinguishing_cues).join('；') || '按本轮样本归类',
-        blocks: [{ type: 'products', columns: 3, items: members.map(product => productCard(product)) },
+        blocks: [...(data.schema_version === '2.2.0' ? [{ type: 'list', title: '款式原型与边界', items: (() => { const style = data.mode_data.prototype_catalog.styles.find(s => s.style_id === cluster.cluster_id); return [style.definition, `选款意义：${style.selection_significance}`, `纳入：${style.inclusion_rules.join('；')}`, `边界：${style.exclusion_rules.join('；')}`, `证据：${style.evidence.join('；')}`, `待核实：${style.unknowns.join('；') || '见商品记录'}`, `代表商品：${style.representative_offer_ids.join('、')}`, `目录版本：${data.mode_data.prototype_catalog.version}`]; })() }] : []), { type: 'products', columns: 3, items: members.toSorted((a, b) => Number(cluster.representative_offer_ids.includes(b.offer_id)) - Number(cluster.representative_offer_ids.includes(a.offer_id))).map(product => productCard(product, cluster.representative_offer_ids.includes(product.offer_id) ? { badge: '代表样本' } : {})) },
           { type: 'list', title: '下一轮可试的搜索方向', items: cluster.next_search_options }] });
     }
-    if (data.schema_version === '2.1.0') {
-      const pending = data.products.filter(product => product.visual_profile?.status !== 'classified');
+    if (['2.1.0', '2.2.0'].includes(data.schema_version)) {
+      const pending = data.products.filter(product => data.schema_version === '2.2.0' ? product.style_assignment?.boundary_status !== 'confirmed' : product.visual_profile?.status !== 'classified');
       if (pending.length) {
         summaries.push({ label: '视觉待核验', count: pending.length });
         views.push({ id: 'visual_review', label: '视觉待核验', title: '视觉待核验',
-          subtitle: '主图不可用、主体不清或一图多款的商品不强行归类。',
+          subtitle: '主图不可用、主体不清或证据不足的商品保留待核验状态。',
           blocks: [{ type: 'products', columns: 3, items: pending.map(product => productCard(product)) }] });
       }
     }
@@ -177,7 +179,7 @@ export function toCommerceViewModel(data) {
   validateWebCards(data);
   const productsById = new Map(data.products.map(product => [product.offer_id, product]));
   const grouped = data.mode === 'explore' ? exploreViews(data, productsById) : preciseViews(data, productsById);
-  if (['2.0.0', '2.1.0'].includes(data.schema_version) && data.mode === 'precise') grouped.views.push({
+  if (['2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version) && data.mode === 'precise') grouped.views.push({
     id: 'all_candidates', label: '全部唯一链接', title: '全部唯一链接',
     subtitle: '按商品 ID 去重；逐图页面可以重复引用同一商品。',
     blocks: [{ type: 'products', columns: 3, items: data.products.map(product => productCard(product)) }]
@@ -194,6 +196,6 @@ export function toCommerceViewModel(data) {
       brand_mark: '1688', brand_title: '1688 找货', brand_subtitle: data.mode === 'explore' ? '款式探索' : '参考图找款',
       nav_label: '商品分类', status: [data.status === 'complete' ? '本轮搜索完成' : '本轮搜索未完成', `${data.products.length} 个清单商品`], search: true
     },
-    views: [overview(data, grouped.summaries), ...grouped.views, ...(['2.0.0', '2.1.0'].includes(data.schema_version) ? [comparison(data)] : []), methods(data)]
+    views: [overview(data, grouped.summaries), ...grouped.views, ...(['2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version) ? [comparison(data)] : []), methods(data)]
   };
 }

@@ -1,5 +1,6 @@
 import { readdir, readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
+import { validateStylePrototypes } from './style-prototypes.mjs';
 import { CliError } from './errors.mjs';
 
 async function jsonFiles(root) {
@@ -29,32 +30,9 @@ function expandFile(data, source) {
   return out;
 }
 
-const clusterDefs = [
-  ['image_unavailable', '图片不可用', ['无法读取主图'], /image_unavailable|图片不可用|unusable/],
-  ['utensil_accessory', '锅具配件', ['非锅体配件'], /锅铲|工具|配件/],
-  ['electric_cooker', '电煮锅', ['独立电热锅体'], /电煮锅|电锅/],
-  ['double_sided_pan', '合页双面煎锅', ['上下双面合页锅体'], /双面|合页|铰链/],
-  ['multi_cavity_pan', '多孔多格早餐锅', ['多个独立煎制凹槽'], /四孔|三孔|十四孔|多孔|多格|分区|早餐|煎蛋烤肠|圆格|梅花|花形/],
-  ['grill_pan', '条纹煎烤盘', ['条纹或烤盘式锅面'], /条纹|煎烤|牛排|烤盘|烤碗/],
-  ['crepe_pan', '超浅煎饼锅', ['极浅边或无边圆盘'], /薄饼|煎饼|超浅|无边|低沿|平煎盘/],
-  ['mini_pan', '迷你小煎锅', ['明显小尺寸单人锅体'], /迷你|小号|小煎锅|锅杯/],
-  ['cookware_set', '多件锅具套装', ['同图多件锅具组合'], /套装|锅具组|多尺寸/],
-  ['steamer_or_pot', '蒸煮锅与奶锅', ['蒸层、汤锅或奶锅结构'], /蒸|奶锅|汤锅|锅具套装/],
-  ['wok', '圆底炒锅', ['圆底或明确炒锅轮廓'], /炒锅|圆底|中式/],
-  ['double_handle_pan', '双耳双柄煎锅', ['无单长柄的双侧握持结构'], /双耳|双柄/],
-  ['lidded_deep_pan', '带盖深壁煎炒锅', ['深壁锅体并配锅盖'], /(?=.*盖)(?=.*(?:深|加深|高边|直壁|弧壁))/],
-  ['deep_pan', '无盖深壁煎炒锅', ['深壁锅体且未显示锅盖'], /深|加深|高边|直壁|弧壁/],
-  ['lidded_shallow_pan', '带盖浅煎锅', ['浅锅体并配锅盖'], /盖/],
-  ['shallow_frying_pan', '浅口平底煎锅', ['常规浅口单柄煎锅'], /./]
-];
-
-function classify(item) {
-  if (item.status === 'image_unavailable' || item.status === 'unusable') return clusterDefs[0];
-  const text = [item.subject, item.primary_style, ...(item.visual_tags || [])].filter(Boolean).join('|');
-  return clusterDefs.find(([, , , pattern]) => pattern.test(text)) || clusterDefs.at(-1);
-}
-
-export async function compileVisualTags(manifestPath, tagDir) {
+export async function compileVisualTags(manifestPath, tagDir, prototypesPath) {
+  if (!prototypesPath) throw new CliError('PROTOTYPES_REQUIRED', '须提供 --prototypes：由图片归纳的款式原型目录');
+  const prototypes = JSON.parse(await readFile(resolve(prototypesPath), 'utf8'));
   let manifest;
   try { manifest = JSON.parse(await readFile(resolve(manifestPath), 'utf8')); }
   catch { throw new CliError('INPUT_READ_FAILED', '无法读取视觉批次清单', { path: resolve(manifestPath) }); }
@@ -69,25 +47,27 @@ export async function compileVisualTags(manifestPath, tagDir) {
   const missing = expected.filter(item => !byId.has(String(item.offer_id))).map(item => String(item.offer_id));
   const unexpected = [...byId.keys()].filter(id => !expected.some(item => String(item.offer_id) === id));
   if (missing.length || unexpected.length) throw new CliError('VISUAL_TAG_COVERAGE_MISMATCH', '视觉标签覆盖与批次清单不一致', { missing, unexpected });
-  const clusters = new Map();
   const items = expected.map(source => {
     const tag = byId.get(String(source.offer_id));
-    const [clusterId, name, cues] = classify(tag);
-    const row = { ...tag, offer_id: String(source.offer_id), batch_id: source.batch_id, image_url: source.image_url, cluster_id: clusterId };
-    if (!clusters.has(clusterId)) clusters.set(clusterId, { cluster_id: clusterId, name, distinguishing_cues: cues, member_offer_ids: [] });
-    clusters.get(clusterId).member_offer_ids.push(row.offer_id);
-    return row;
+    if (tag.batch_id !== source.batch_id) throw new CliError('INVALID_VISUAL_TAGS', '商品标签批次与清单不一致');
+    if (tag.image_url && tag.image_url !== source.image_url) throw new CliError('INVALID_VISUAL_TAGS', '商品标签图片与清单不一致');
+    return { ...tag, offer_id: String(source.offer_id), image_url: source.image_url };
   });
-  const clusterList = [...clusters.values()].map(cluster => ({ ...cluster, member_count: cluster.member_offer_ids.length, representative_offer_ids: cluster.member_offer_ids.slice(0, 5) })).sort((a, b) => b.member_count - a.member_count);
-  return {
-    schema: '1688cli.visual-tag-catalog',
-    schema_version: '1.0.0',
-    source_manifest: resolve(manifestPath),
-    tag_directory: resolve(tagDir),
-    batch_size: manifest.batch_size,
-    clustering_basis: 'post_tag_visual_structure',
-    coverage: { requested: expected.length, tagged: items.filter(item => item.status === 'tagged').length, image_unavailable: items.filter(item => item.status !== 'tagged').length, unique_offer_ids: new Set(items.map(item => item.offer_id)).size },
-    clusters: clusterList,
-    items
-  };
+  for (const row of manifest.unusable || []) items.push({ ...row, offer_id: String(row.offer_id),
+    image_fingerprint: 'unavailable:' + String(row.offer_id), catalog_version: prototypes.version,
+    style_ids: [], visible_objects: [], variants: [], unknowns: ['图片不可用'], compared_style_ids: [],
+    multiple_styles: false, boundary_status: 'unusable', association_reason: row.reason || '图片不可用' });
+  const checked = validateStylePrototypes(prototypes, items);
+  const clusters = prototypes.styles.map(style => {
+    const members = items.filter(item => item.style_ids.includes(style.style_id)).map(item => item.offer_id);
+    return { ...style, cluster_id: style.style_id, member_offer_ids: members, member_count: members.length,
+      distinguishing_cues: style.inclusion_rules, search_terms_seen: style.search_terms_seen || [],
+      next_search_options: style.next_search_options || [] };
+  });
+  return { schema: '1688-style-prototype-catalog', schema_version: '1.0.0',
+    version: prototypes.version, source_manifest: resolve(manifestPath),
+    clustering_basis: 'whole_product_prototypes', batch_size: manifest.batch_size,
+    styles: prototypes.styles, revisions: prototypes.revisions, review: prototypes.review,
+    coverage: { ...checked, requested: expected.length, boundary: items.filter(x => x.boundary_status !== 'confirmed').length },
+    clusters, items };
 }

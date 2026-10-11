@@ -1,3 +1,4 @@
+import { validateStylePrototypes } from './style-prototypes.mjs';
 import { CliError } from './errors.mjs';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -12,8 +13,8 @@ export function validateResearchResult(data) {
   if (!object(data)) throw new CliError('OUTPUT_CONTRACT_FAILED', '找货结果不符合输出契约', { issues });
 
   check(data.schema === '1688-sourcing-result', 'schema', '须为 1688-sourcing-result');
-  check(['1.0.0', '2.0.0', '2.1.0'].includes(data.schema_version), 'schema_version', '须为 1.0.0、2.0.0 或 2.1.0');
-  const fullInventory = ['2.0.0', '2.1.0'].includes(data.schema_version);
+  check(['1.0.0', '2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version), 'schema_version', '须为 1.0.0、2.0.0 或 2.1.0');
+  const fullInventory = ['2.0.0', '2.1.0', '2.2.0'].includes(data.schema_version);
   const visualInventory = data.schema_version === '2.1.0';
   check(['explore', 'precise'].includes(data.mode), 'mode', '须为 explore 或 precise');
   check(['complete', 'partial', 'needs_input'].includes(data.status), 'status', '状态值无效');
@@ -238,6 +239,23 @@ export function validateResearchResult(data) {
       check(['likely_same', 'similar_alternative', 'mismatch', 'uncertain'].includes(row.match_level), `${at}.match_level`, '匹配级别无效');
       for (const key of ['visible_evidence', 'differences', 'unknowns']) check(list(row[key]), `${at}.${key}`, '须为数组');
     }
+  }
+
+  if (data.schema_version === '2.2.0' && data.mode === 'explore') {
+    const catalog = mode.prototype_catalog;
+    const items = (data.products || []).map(p => ({ ...p.style_assignment, offer_id: p.offer_id, image_url: p.image_url }));
+    try { validateStylePrototypes(catalog, items, { complete: data.status === 'complete' }); }
+    catch (e) { if (!e.details?.issues) throw e; issues.push(...e.details.issues.map(x => ({ ...x, path: `prototype_catalog.${x.path}` }))); }
+    const styles = Array.isArray(catalog?.styles) ? catalog.styles : [];
+    check(mode.clustering_basis === 'whole_product_prototypes', 'mode_data.clustering_basis', '须使用完整实物款式原型');
+    check(mode.clusters?.length === styles.length, 'mode_data.clusters', '图组须逐一对应款式原型');
+    for (const s of styles) {
+      const cluster = mode.clusters?.find(c => c.cluster_id === s.style_id);
+      const members = items.filter(x => x.style_ids?.includes(s.style_id)).map(x => x.offer_id);
+      check(cluster?.name === s.name && list(cluster?.member_offer_ids) && new Set(cluster.member_offer_ids).size === members.length && cluster.member_offer_ids.length === members.length && members.every(id => cluster.member_offer_ids.includes(id)), 'mode_data.clusters', '款式定义、图组和逐商品归属须一致');
+      check(JSON.stringify(cluster?.representative_offer_ids) === JSON.stringify(s.representative_offer_ids), 'mode_data.clusters', '代表图须与原型一致');
+    }
+    for (const p of data.products || []) check(list(p.category_ids) && list(p.style_assignment?.style_ids) && JSON.stringify([...p.category_ids].sort()) === JSON.stringify([...p.style_assignment.style_ids].sort()), 'products.category_ids', '类别视图须与款式归属一致');
   }
 
   const handoff = data.human_handoff || {};

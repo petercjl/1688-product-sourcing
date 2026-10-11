@@ -144,11 +144,11 @@
     },
     {
       "id": "sourcing.image.inspect",
-      "purpose": "Inspect up to ten product images concurrently while returning one traceable visible-evidence record per offer.",
+      "purpose": "Inspect up to ten product images with traceable pairing while returning one traceable visible-evidence record per offer.",
       "required": true,
       "required_features": [
         "batch_up_to_ten",
-        "concurrent_image_inspection",
+        "traceable_image_inspection",
         "per_offer_result",
         "candidate_image_review",
         "visible_evidence_only",
@@ -179,18 +179,19 @@
     },
     {
       "id": "sourcing.visual.compile",
-      "purpose": "Verify complete per-offer image tags and create visual-structure similarity clusters only after image inspection is complete.",
+      "purpose": "Validate Agent-defined whole-product prototypes, multi-style assignments and review records without deciding categories.",
       "required": true,
       "required_features": [
         "complete_offer_coverage",
         "duplicate_rejection",
-        "post_tag_clustering",
-        "per_offer_cluster_id"
+        "prototype_assignment_validation",
+        "per_offer_style_ids"
       ],
       "input_fields": [
         "visual_batch_manifest",
         "visual_tag_directory",
-        "output_path"
+        "output_path",
+        "prototype_catalog"
       ],
       "output_fields": [
         "coverage",
@@ -207,7 +208,8 @@
         "INVALID_VISUAL_TAGS",
         "DUPLICATE_VISUAL_TAG",
         "VISUAL_TAG_COVERAGE_MISMATCH",
-        "OUTPUT_EXISTS"
+        "OUTPUT_EXISTS",
+        "PROTOTYPES_REQUIRED"
       ]
     },
     {

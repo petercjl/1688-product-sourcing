@@ -90,11 +90,11 @@
       "status": "implemented",
       "implementation": {
         "kind": "agent-native-vision",
-        "discovery": "Use currently advertised Codex vision capabilities to inspect every item in one visual batch concurrently. A batch contains at most ten offer_id/image_url pairs. Keep the per-offer mapping and return CAPABILITY_UNAVAILABLE if all images cannot be inspected without title input."
+        "discovery": "Use currently advertised Codex vision capabilities to inspect every item in one visual batch with traceable pairing. A batch contains at most ten offer_id/image_url pairs. Keep the per-offer mapping and return CAPABILITY_UNAVAILABLE if all images cannot be inspected without title input."
       },
       "features": [
         "batch_up_to_ten",
-        "concurrent_image_inspection",
+        "traceable_image_inspection",
         "per_offer_result",
         "candidate_image_review",
         "visible_evidence_only",
@@ -131,20 +131,20 @@
       "status": "implemented",
       "implementation": {
         "kind": "stable-cli",
-        "command": "1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <visual-tags> --output <new-catalog.json>",
+        "command": "1688-product-sourcing research visual-compile <visual-batches.json> --tag-dir <visual-tags> --prototypes <prototypes.json> --output <new-catalog.json>",
         "probe": "1688-product-sourcing tool capabilities --json"
       },
       "features": [
         "complete_offer_coverage",
         "duplicate_rejection",
-        "post_tag_clustering",
-        "per_offer_cluster_id"
+        "prototype_assignment_validation",
+        "per_offer_style_ids"
       ],
       "permissions": [
         "read task-local visual manifests and tags",
         "write one new catalog JSON"
       ],
-      "normalization": "Reject missing or duplicate offers; preserve every per-image tag and assign one structural similarity cluster only after tagging."
+      "normalization": "Reject missing or duplicate offers; preserve Agent-defined prototypes, overlapping style memberships, boundary states, revisions and review evidence; never infer categories from text."
     },
     {
       "capability_id": "sourcing.result.build",

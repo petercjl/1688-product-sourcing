@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { CliError } from './errors.mjs';
@@ -34,7 +35,7 @@ export async function materializeVisualBatches(manifestPath, outputDir, fetchImp
         if (!bytes.length) throw new Error('empty image');
         const localPath = join(batchDir, `${item.offer_id}${extensionFor(contentType)}`);
         await writeFile(localPath, bytes, { mode: 0o600, flag: 'wx' });
-        return { ...item, status: 'ready', local_path: localPath, content_type: contentType.split(';')[0], bytes: bytes.length };
+        return { ...item, status: 'ready', image_fingerprint: 'sha256:' + createHash('sha256').update(bytes).digest('hex'), local_path: localPath, content_type: contentType.split(';')[0], bytes: bytes.length };
       } catch (error) {
         return { ...item, status: 'failed', local_path: '', error: error.message };
       }

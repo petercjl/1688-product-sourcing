@@ -6,3 +6,5 @@
 - 生成分类商品页面：在证据 JSON 通过校验后读取 [HTML 报告映射](topics/html-report.md)，并动态加载当前 `compact-commerce-ui` Skill。
 
 每个路由只加载当前决策所需的主题。供应商谈价由人工完成；本 Skill 只准备可核验的候选与询价问题。
+
+- 进入视觉分类节点时读取 [款式原型与持续比较](topics/style-prototypes.md)，完成后返回主线第 7 步。

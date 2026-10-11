@@ -1,6 +1,6 @@
 {
   "name": "@petercjl/1688-product-sourcing",
-  "version": "0.1.1",
+  "version": "0.2.0-dev.0",
   "description": "1688 application Skill: 1688-product-sourcing",
   "type": "module",
   "bin": {
